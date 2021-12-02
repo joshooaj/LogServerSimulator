@@ -39,9 +39,9 @@ function Test-LogServerBehavior {
         $active = New-Object system.collections.generic.list[int]
         $inactive = New-Object system.collections.generic.list[int]
         $swap = New-Object system.collections.generic.list[int]
-        $lastTableSwap = 0
+        $lastTableSwap = 1
         $nextTableSwap = $lastTableSwap + $ExpiredLogsMaximumLifetimeInDays
-        for ($day = 0; $day -lt $SimulationDuration; $day++) {
+        for ($day = 1; $day -le $SimulationDuration; $day++) {
             1..$LogsPerDay | Foreach-Object {
                 $active.Add($day)
             }
@@ -97,7 +97,25 @@ $settings = @{
     LogRetention = 365
     SimulationDuration = 365 * 3
     LogDeleteThreshold = 5
+    ExpiredLogsMaximumLifetimeInDays = 366
 }
-Test-LogServerBehavior -LogsPerDay 104150 -LogRetention 365 -SimulationDuration 1095 -LogDeleteThreshold 5 -ExpiredLogsMaximumLifetimeInDays 366 | Format-Table
+
+$testSettings = @{
+    LogsPerDay = 100
+    LogRetention = 30
+    SimulationDuration = 365
+    LogDeleteThreshold = 20
+    ExpiredLogsMaximumLifetimeInDays = 7
+}
+
+$results = new-object system.collections.generic.list[pscustomobject]
+Test-LogServerBehavior @testSettings | Foreach-Object {
+    $results.Add($_)
+    $_
+} | Out-GridView
+
+$settings = $testSettings
+$fileName = 'TableSwap-Simulation_{0}-logs-per-day_{1}-days-retention_{2}-threshold_{3}-max-days-between-swaps.csv' -f $settings.LogsPerDay, $settings.LogRetention, $settings.LogDeleteThreshold, $settings.ExpiredLogsMaximumLifetimeInDays
+$results | Export-Csv -Path $PSScriptRoot/$fileName -NoTypeInformation -Force
 
 #Test-LogServerBehavior -LogsPerDay 104150 -LogRetention 30 -SimulationDuration 60 | Format-Table
