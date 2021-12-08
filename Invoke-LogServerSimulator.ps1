@@ -142,7 +142,7 @@ function Invoke-LogServerSimulator {
         $SimulationDuration,
 
         [Parameter()]
-        [ValidateRange(1, 100)]
+        [ValidateRange(0, 100)]
         [int]
         $LogDeleteThreshold = 20,
 
@@ -204,7 +204,7 @@ function Invoke-LogServerSimulator {
                     }
                 }
                 $countNotExpired = $inactive.Count - $countExpired
-                $percentNotExpired = [int]($countNotExpired / $inactive.Count * 100)
+                $percentNotExpired = [int]([math]::Ceiling($countNotExpired / $inactive.Count * 100))
             }
             Write-Verbose "  Records older than $cutoffDay are expired."
             Write-Verbose "  Expired records in inactive: $countExpired of $($inactive.Count)"
@@ -215,6 +215,7 @@ function Invoke-LogServerSimulator {
             $rowsCopied = 0
             $tablesSwapped = $false
             $tableSwapReason = $null
+            $swapCount = 0
             if ($day -eq 1 -or $percentNotExpired -le $LogDeleteThreshold -or $day - $lastTableSwap -ge $ExpiredLogsMaximumLifetimeInDays) {
                 if ($day -eq 1) {
                     $tableSwapReason = 'Day1'
@@ -223,15 +224,24 @@ function Invoke-LogServerSimulator {
                 } else {
                     $tableSwapReason = 'ExpiredLogsMaximumLifetimeInDays'
                 }
-                $swap = $inactive | Where-Object { $_ -gt $cutoffDay}
-                $rowsCopied = $swap.Count
-                $inactive = $active
-                $active = New-Object system.collections.generic.list[int]
-                $swap | Foreach-Object { $active.Add($_) }
+                
+                $swapCount = if ($tableSwapReason -eq 'ExpiredLogsMaximumLifetimeInDays') { 2 } else { 1 }
+                for ($i = 0; $i -lt $swapCount; $i++) {
+                    $swap = New-Object System.Collections.Generic.List[int]
+                    foreach ($row in $inactive) {
+                        if ($row -gt $cutoffDay) {
+                            $swap.Add($row)
+                        }
+                    }
+                    $rowsCopied += $swap.Count
+                    $inactive = $active
+                    $active = $swap
+                }
+
                 $lastTableSwap = $day
                 $nextTableSwap = $lastTableSwap + $ExpiredLogsMaximumLifetimeInDays
                 $tablesSwapped = $true
-                Write-Verbose "  Table swap copied $rowsCopied rows and inactive now has $($inactive.Count) rows moved from active. Reason: $tableSwapReason"
+                Write-Verbose "  Table swap copied $rowsCopied rows in $swapCount swap operations, and inactive now has $($inactive.Count) rows moved from active. Reason: $tableSwapReason"
             }
 
             # Output the daily statistics
@@ -242,6 +252,7 @@ function Invoke-LogServerSimulator {
                 TotalRecords = $active.Count + $inactive.Count
                 PercentNotExpired = $percentNotExpired
                 TableSwapOccurred = $tablesSwapped
+                TableSwapCount = $swapCount
                 TableSwapTrigger = $tableSwapReason
                 RowsCopied = $rowsCopied
                 NextTableSwapOnOrBefore = $nextTableSwap
